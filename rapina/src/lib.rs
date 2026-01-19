@@ -9,7 +9,7 @@ pub mod server;
 pub mod prelude {
     pub use crate::app::Rapina;
     pub use crate::error::{Error, Result};
-    pub use crate::extract::Json;
+    pub use crate::extract::{Json, Path};
     pub use crate::response::IntoResponse;
     pub use crate::router::Router;
 

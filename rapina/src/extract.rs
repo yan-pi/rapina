@@ -4,11 +4,13 @@ use http_body_util::BodyExt;
 use hyper::body::Incoming;
 use serde::de::DeserializeOwned;
 use std::collections::HashMap;
+use std::str::FromStr;
 
 use crate::error::Error;
 use crate::response::{BoxBody, IntoResponse};
 
 pub struct Json<T>(pub T);
+pub struct Path<T>(pub T);
 
 pub type PathParams = HashMap<String, String>;
 
@@ -20,6 +22,12 @@ pub trait FromRequest: Sized {
 }
 
 impl<T> Json<T> {
+    pub fn into_inner(self) -> T {
+        self.0
+    }
+}
+
+impl<T> Path<T> {
     pub fn into_inner(self) -> T {
         self.0
     }
@@ -49,6 +57,24 @@ impl<T: serde::Serialize> IntoResponse for Json<T> {
             .header("content-type", "application/json")
             .body(http_body_util::Full::new(Bytes::from(body)))
             .unwrap()
+    }
+}
+
+impl<T: FromStr + Send> FromRequest for Path<T>
+where
+    T::Err: std::fmt::Display,
+{
+    async fn from_request(_req: Request<Incoming>, params: &PathParams) -> Result<Self, Error> {
+        let value = params
+            .values()
+            .next()
+            .ok_or_else(|| Error::bad_request("missing path param"))?;
+
+        let parsed = value
+            .parse::<T>()
+            .map_err(|e| Error::bad_request(format!("invalid path param: {}", e)))?;
+
+        Ok(Path(parsed))
     }
 }
 
