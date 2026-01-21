@@ -1,8 +1,10 @@
 mod body_limit;
 mod timeout;
+mod trace_id;
 
 pub use body_limit::BodyLimitMiddleware;
 pub use timeout::TimeoutMiddleware;
+pub use trace_id::TraceIdMiddleware;
 
 use std::future::Future;
 use std::pin::Pin;
