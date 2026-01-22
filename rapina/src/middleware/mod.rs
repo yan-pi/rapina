@@ -1,8 +1,10 @@
 mod body_limit;
+mod request_log;
 mod timeout;
 mod trace_id;
 
 pub use body_limit::BodyLimitMiddleware;
+pub use request_log::RequestLogMiddleware;
 pub use timeout::TimeoutMiddleware;
 pub use trace_id::TraceIdMiddleware;
 
