@@ -70,6 +70,12 @@
 //! Access route metadata for documentation and tooling:
 //!
 //! - [`RouteInfo`](introspection::RouteInfo) - Metadata about registered routes
+//!
+//! ## Testing
+//!
+//! Integration testing utilities:
+//!
+//! - [`TestClient`](testing::TestClient) - Test client for integration testing
 
 pub mod app;
 pub mod context;
@@ -84,6 +90,7 @@ pub mod router;
 pub mod server;
 pub mod state;
 pub mod test;
+pub mod testing;
 
 /// Convenient re-exports for common Rapina types.
 ///

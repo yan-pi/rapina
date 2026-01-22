@@ -31,10 +31,14 @@ use crate::state::AppState;
 /// }
 /// ```
 pub struct Rapina {
-    router: Router,
-    state: AppState,
-    middlewares: MiddlewareStack,
-    introspection: bool,
+    /// The router for this application.
+    pub(crate) router: Router,
+    /// The application state.
+    pub(crate) state: AppState,
+    /// The middleware stack.
+    pub(crate) middlewares: MiddlewareStack,
+    /// Whether introspection is enabled.
+    pub(crate) introspection: bool,
 }
 
 impl Rapina {
