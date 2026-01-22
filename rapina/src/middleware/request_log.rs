@@ -1,6 +1,6 @@
 use hyper::body::Incoming;
 use hyper::{Request, Response};
-use tracing::{info, info_span, Instrument};
+use tracing::{Instrument, info, info_span};
 
 use crate::context::RequestContext;
 use crate::response::BoxBody;
