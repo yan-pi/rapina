@@ -111,7 +111,10 @@ fn route_macro_core(
 }
 
 fn is_parts_only_extractor(type_str: &str) -> bool {
-    type_str.contains("Path") || type_str.contains("State") || type_str.contains("Context")
+    type_str.contains("Path")
+        || type_str.contains("Query")
+        || type_str.contains("State")
+        || type_str.contains("Context")
 }
 
 fn route_macro(attr: TokenStream, item: TokenStream) -> TokenStream {

@@ -14,6 +14,7 @@ use crate::state::AppState;
 
 pub struct Json<T>(pub T);
 pub struct Path<T>(pub T);
+pub struct Query<T>(pub T);
 pub struct State<T>(pub T);
 pub struct Context(pub RequestContext);
 
@@ -42,6 +43,12 @@ impl<T> Json<T> {
 }
 
 impl<T> Path<T> {
+    pub fn into_inner(self) -> T {
+        self.0
+    }
+}
+
+impl<T> Query<T> {
     pub fn into_inner(self) -> T {
         self.0
     }
@@ -123,6 +130,19 @@ impl FromRequestParts for Context {
             .cloned()
             .map(Context)
             .ok_or_else(|| Error::internal("RequestContext not found"))
+    }
+}
+
+impl<T: DeserializeOwned + Send> FromRequestParts for Query<T> {
+    async fn from_request_parts(
+        parts: &http::request::Parts,
+        _params: &PathParams,
+        _state: &Arc<AppState>,
+    ) -> Result<Self, Error> {
+        let query = parts.uri.query().unwrap_or("");
+        let value: T = serde_urlencoded::from_str(query)
+            .map_err(|e| Error::bad_request(format!("invalid query: {}", e)))?;
+        Ok(Query(value))
     }
 }
 
