@@ -17,6 +17,11 @@ struct Cli {
 enum Commands {
     /// Display version information
     Version,
+    /// Create a new Rapina project
+    New {
+        /// Name of the project to create
+        name: String,
+    },
 }
 
 fn main() {
@@ -25,6 +30,12 @@ fn main() {
     match cli.command {
         Some(Commands::Version) => {
             print_version();
+        }
+        Some(Commands::New { name }) => {
+            if let Err(e) = commands::new::execute(&name) {
+                eprintln!("{} {}", "Error:".red().bold(), e);
+                std::process::exit(1);
+            }
         }
         None => {
             print_banner();
