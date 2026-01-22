@@ -1,10 +1,39 @@
+//! Response types and conversion traits.
+//!
+//! This module defines the [`IntoResponse`] trait which allows various types
+//! to be converted into HTTP responses.
+
 use bytes::Bytes;
 use http::{Response, StatusCode};
 use http_body_util::Full;
 
+/// The body type used for HTTP responses.
 pub type BoxBody = Full<Bytes>;
 
+/// Trait for types that can be converted into an HTTP response.
+///
+/// Implement this trait to allow your type to be returned from handlers.
+/// Rapina provides implementations for common types like strings,
+/// status codes, and JSON.
+///
+/// # Examples
+///
+/// ```
+/// use rapina::response::{BoxBody, IntoResponse};
+/// use http::Response;
+///
+/// struct MyResponse {
+///     message: String,
+/// }
+///
+/// impl IntoResponse for MyResponse {
+///     fn into_response(self) -> Response<BoxBody> {
+///         self.message.into_response()
+///     }
+/// }
+/// ```
 pub trait IntoResponse {
+    /// Converts this type into an HTTP response.
     fn into_response(self) -> Response<BoxBody>;
 }
 

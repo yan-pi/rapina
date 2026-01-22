@@ -1,3 +1,8 @@
+//! Standardized error handling for Rapina applications.
+//!
+//! This module provides a consistent error type that automatically converts
+//! to HTTP responses with structured JSON bodies including trace IDs.
+
 use serde::Serialize;
 use std::fmt;
 
@@ -5,30 +10,60 @@ use crate::response::{BoxBody, IntoResponse};
 use bytes::Bytes;
 use http_body_util::Full;
 
+/// The JSON structure returned for error responses.
 #[derive(Debug, Serialize)]
 pub struct ErrorResponse {
+    /// The error details.
     pub error: ErrorDetail,
+    /// Unique identifier for request tracing.
     pub trace_id: String,
 }
 
+/// Detailed error information in the response body.
 #[derive(Debug, Serialize)]
 pub struct ErrorDetail {
+    /// Machine-readable error code (e.g., "NOT_FOUND", "BAD_REQUEST").
     pub code: String,
+    /// Human-readable error message.
     pub message: String,
+    /// Optional additional error details.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub details: Option<serde_json::Value>,
 }
 
+/// The main error type for Rapina applications.
+///
+/// Provides convenient constructors for common HTTP error codes and
+/// automatically converts to structured JSON responses.
+///
+/// # Examples
+///
+/// ```
+/// use rapina::error::Error;
+///
+/// // Create a 404 error
+/// let err = Error::not_found("user not found");
+///
+/// // Create an error with additional details
+/// let err = Error::bad_request("validation failed")
+///     .with_details(serde_json::json!({"field": "email"}));
+/// ```
 #[derive(Debug)]
 pub struct Error {
+    /// HTTP status code.
     pub status: u16,
+    /// Machine-readable error code.
     pub code: String,
+    /// Human-readable error message.
     pub message: String,
+    /// Optional additional error details.
     pub details: Option<serde_json::Value>,
+    /// Optional trace ID for this error.
     pub trace_id: Option<String>,
 }
 
 impl Error {
+    /// Creates a new error with the given status code, code, and message.
     pub fn new(status: u16, code: impl Into<String>, message: impl Into<String>) -> Self {
         Self {
             status,
@@ -39,48 +74,59 @@ impl Error {
         }
     }
 
+    /// Adds additional details to the error.
     pub fn with_details(mut self, details: serde_json::Value) -> Self {
         self.details = Some(details);
         self
     }
 
+    /// Sets the trace ID for this error.
     pub fn with_trace_id(mut self, trace_id: impl Into<String>) -> Self {
         self.trace_id = Some(trace_id.into());
         self
     }
 
+    /// Creates a 400 Bad Request error.
     pub fn bad_request(message: impl Into<String>) -> Self {
         Self::new(400, "BAD_REQUEST", message)
     }
 
+    /// Creates a 401 Unauthorized error.
     pub fn unauthorized(message: impl Into<String>) -> Self {
         Self::new(401, "UNAUTHORIZED", message)
     }
 
+    /// Creates a 403 Forbidden error.
     pub fn forbidden(message: impl Into<String>) -> Self {
         Self::new(403, "FORBIDDEN", message)
     }
 
+    /// Creates a 404 Not Found error.
     pub fn not_found(message: impl Into<String>) -> Self {
         Self::new(404, "NOT_FOUND", message)
     }
 
+    /// Creates a 409 Conflict error.
     pub fn conflict(message: impl Into<String>) -> Self {
         Self::new(409, "CONFLICT", message)
     }
 
+    /// Creates a 422 Validation Error.
     pub fn validation(message: impl Into<String>) -> Self {
         Self::new(422, "VALIDATION_ERROR", message)
     }
 
+    /// Creates a 429 Rate Limited error.
     pub fn rate_limited(message: impl Into<String>) -> Self {
         Self::new(429, "RATE_LIMITED", message)
     }
 
+    /// Creates a 500 Internal Server Error.
     pub fn internal(message: impl Into<String>) -> Self {
         Self::new(500, "INTERNAL_ERROR", message)
     }
 
+    /// Converts this error to an ErrorResponse with the given trace ID.
     pub fn to_response(&self, trace_id: String) -> ErrorResponse {
         ErrorResponse {
             error: ErrorDetail {
@@ -119,6 +165,9 @@ impl IntoResponse for Error {
     }
 }
 
+/// A type alias for `Result<T, Error>`.
+///
+/// This is the standard result type used throughout Rapina handlers.
 pub type Result<T> = std::result::Result<T, Error>;
 
 #[cfg(test)]

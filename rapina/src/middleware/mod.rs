@@ -1,3 +1,15 @@
+//! Middleware system for Rapina applications.
+//!
+//! Middleware can intercept and modify requests before they reach handlers,
+//! and responses before they are sent to clients.
+//!
+//! # Built-in Middleware
+//!
+//! - [`TimeoutMiddleware`] - Request timeout handling
+//! - [`BodyLimitMiddleware`] - Limit request body size
+//! - [`TraceIdMiddleware`] - Add trace IDs to requests/responses
+//! - [`RequestLogMiddleware`] - Structured request logging
+
 mod body_limit;
 mod request_log;
 mod timeout;
@@ -20,9 +32,37 @@ use crate::response::BoxBody;
 use crate::router::Router;
 use crate::state::AppState;
 
+/// A boxed future type used by middleware.
 pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
+/// Trait for implementing custom middleware.
+///
+/// Middleware receives the request, context, and a [`Next`] function to
+/// call the next middleware or the handler.
+///
+/// # Examples
+///
+/// ```ignore
+/// use rapina::middleware::{Middleware, Next, BoxFuture};
+///
+/// struct LoggingMiddleware;
+///
+/// impl Middleware for LoggingMiddleware {
+///     fn handle<'a>(
+///         &'a self,
+///         req: Request<Incoming>,
+///         ctx: &'a RequestContext,
+///         next: Next<'a>,
+///     ) -> BoxFuture<'a, Response<BoxBody>> {
+///         Box::pin(async move {
+///             println!("Request: {} {}", req.method(), req.uri());
+///             next.run(req).await
+///         })
+///     }
+/// }
+/// ```
 pub trait Middleware: Send + Sync + 'static {
+    /// Handles the request, optionally modifying it or the response.
     fn handle<'a>(
         &'a self,
         req: Request<Incoming>,
@@ -31,6 +71,7 @@ pub trait Middleware: Send + Sync + 'static {
     ) -> BoxFuture<'a, Response<BoxBody>>;
 }
 
+/// Represents the next middleware or handler in the chain.
 pub struct Next<'a> {
     middlewares: &'a [Arc<dyn Middleware>],
     router: &'a Router,
@@ -53,6 +94,7 @@ impl<'a> Next<'a> {
         }
     }
 
+    /// Runs the next middleware or handler in the chain.
     pub async fn run(self, req: Request<Incoming>) -> Response<BoxBody> {
         if let Some((current, rest)) = self.middlewares.split_first() {
             let next = Next {
@@ -68,6 +110,7 @@ impl<'a> Next<'a> {
     }
 }
 
+/// A stack of middleware to be executed in order.
 pub struct MiddlewareStack {
     middlewares: Vec<Arc<dyn Middleware>>,
 }

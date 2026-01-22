@@ -1,12 +1,33 @@
 use tracing::Level;
 use tracing_subscriber::{EnvFilter, fmt};
 
+/// Configuration for the tracing/logging system.
+///
+/// Use the builder pattern to configure logging output format and level.
+///
+/// # Examples
+///
+/// ```ignore
+/// use rapina::prelude::*;
+///
+/// // JSON logging for production
+/// Rapina::new()
+///     .with_tracing(TracingConfig::new().json())
+///     .router(router)
+///     .listen("127.0.0.1:3000")
+///     .await
+/// ```
 #[derive(Debug, Clone)]
 pub struct TracingConfig {
+    /// Output logs as JSON.
     pub json: bool,
+    /// The minimum log level.
     pub level: Level,
+    /// Include the target (module path) in logs.
     pub with_target: bool,
+    /// Include the source file in logs.
     pub with_file: bool,
+    /// Include line numbers in logs.
     pub with_line_number: bool,
 }
 
@@ -23,35 +44,42 @@ impl Default for TracingConfig {
 }
 
 impl TracingConfig {
+    /// Creates a new tracing configuration with default values.
     pub fn new() -> Self {
         Self::default()
     }
 
+    /// Enables JSON output format.
     pub fn json(mut self) -> Self {
         self.json = true;
         self
     }
 
+    /// Sets the minimum log level.
     pub fn level(mut self, level: Level) -> Self {
         self.level = level;
         self
     }
 
+    /// Configures whether to include the target in logs.
     pub fn with_target(mut self, enabled: bool) -> Self {
         self.with_target = enabled;
         self
     }
 
+    /// Configures whether to include file names in logs.
     pub fn with_file(mut self, enabled: bool) -> Self {
         self.with_file = enabled;
         self
     }
 
+    /// Configures whether to include line numbers in logs.
     pub fn with_line_number(mut self, enabled: bool) -> Self {
         self.with_line_number = enabled;
         self
     }
 
+    /// Initializes the tracing subscriber with this configuration.
     pub fn init(self) {
         let filter = EnvFilter::try_from_default_env()
             .unwrap_or_else(|_| EnvFilter::new(self.level.to_string()));

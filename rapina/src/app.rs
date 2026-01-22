@@ -1,3 +1,5 @@
+//! The main application builder for Rapina.
+
 use std::net::SocketAddr;
 
 use crate::middleware::{Middleware, MiddlewareStack};
@@ -6,6 +8,27 @@ use crate::router::Router;
 use crate::server::serve;
 use crate::state::AppState;
 
+/// The main application type for building Rapina servers.
+///
+/// Use the builder pattern to configure routing, state, middleware,
+/// and observability before starting the server.
+///
+/// # Examples
+///
+/// ```rust,no_run
+/// use rapina::prelude::*;
+///
+/// #[tokio::main]
+/// async fn main() -> std::io::Result<()> {
+///     let router = Router::new()
+///         .get("/", |_, _, _| async { "Hello!" });
+///
+///     Rapina::new()
+///         .router(router)
+///         .listen("127.0.0.1:3000")
+///         .await
+/// }
+/// ```
 pub struct Rapina {
     router: Router,
     state: AppState,
@@ -13,6 +36,7 @@ pub struct Rapina {
 }
 
 impl Rapina {
+    /// Creates a new Rapina application builder.
     pub fn new() -> Self {
         Self {
             router: Router::new(),
@@ -21,26 +45,35 @@ impl Rapina {
         }
     }
 
+    /// Sets the router for the application.
     pub fn router(mut self, router: Router) -> Self {
         self.router = router;
         self
     }
 
+    /// Adds shared state that can be accessed by handlers via [`State`](crate::extract::State).
     pub fn state<T: Send + Sync + 'static>(mut self, value: T) -> Self {
         self.state = self.state.with(value);
         self
     }
 
+    /// Adds a middleware to the application.
     pub fn middleware<M: Middleware>(mut self, middleware: M) -> Self {
         self.middlewares.add(middleware);
         self
     }
 
+    /// Configures tracing/logging for the application.
     pub fn with_tracing(self, config: TracingConfig) -> Self {
         config.init();
         self
     }
 
+    /// Starts the HTTP server on the given address.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the address cannot be parsed.
     pub async fn listen(self, addr: &str) -> std::io::Result<()> {
         let addr: SocketAddr = addr.parse().expect("invalid address");
         serve(self.router, self.state, self.middlewares, addr).await

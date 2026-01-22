@@ -1,3 +1,8 @@
+//! HTTP routing for Rapina applications.
+//!
+//! The [`Router`] type collects route definitions and matches incoming
+//! requests to the appropriate handlers.
+
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -18,15 +23,32 @@ pub(crate) struct Route {
     handler: HandlerFn,
 }
 
+/// The HTTP router for matching requests to handlers.
+///
+/// Routes are matched in the order they are added. Use path parameters
+/// with the `:param` syntax.
+///
+/// # Examples
+///
+/// ```
+/// use rapina::prelude::*;
+///
+/// let router = Router::new()
+///     .get("/", |_, _, _| async { "Hello!" })
+///     .get("/users/:id", |_, _, _| async { "User" })
+///     .post("/users", |_, _, _| async { StatusCode::CREATED });
+/// ```
 pub struct Router {
     pub(crate) routes: Vec<(Method, Route)>,
 }
 
 impl Router {
+    /// Creates a new empty router.
     pub fn new() -> Self {
         Self { routes: Vec::new() }
     }
 
+    /// Adds a route with the given HTTP method and pattern.
     pub fn route<F, Fut, Out>(mut self, method: Method, pattern: &str, handler: F) -> Self
     where
         F: Fn(Request<Incoming>, PathParams, Arc<AppState>) -> Fut + Send + Sync + Clone + 'static,
@@ -52,6 +74,7 @@ impl Router {
         self
     }
 
+    /// Adds a GET route.
     pub fn get<F, Fut, Out>(self, pattern: &str, handler: F) -> Self
     where
         F: Fn(Request<Incoming>, PathParams, Arc<AppState>) -> Fut + Send + Sync + Clone + 'static,
@@ -61,6 +84,7 @@ impl Router {
         self.route(Method::GET, pattern, handler)
     }
 
+    /// Adds a POST route.
     pub fn post<F, Fut, Out>(self, pattern: &str, handler: F) -> Self
     where
         F: Fn(Request<Incoming>, PathParams, Arc<AppState>) -> Fut + Send + Sync + Clone + 'static,
@@ -70,6 +94,7 @@ impl Router {
         self.route(Method::POST, pattern, handler)
     }
 
+    /// Handles an incoming request by matching it to a route.
     pub async fn handle(&self, req: Request<Incoming>, state: &Arc<AppState>) -> Response<BoxBody> {
         let method = req.method().clone();
         let path = req.uri().path().to_string();

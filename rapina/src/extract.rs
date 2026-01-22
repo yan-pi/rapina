@@ -1,3 +1,8 @@
+//! Request extractors for parsing incoming HTTP requests.
+//!
+//! Extractors are types that implement [`FromRequest`] or [`FromRequestParts`]
+//! and can be used as handler parameters to automatically parse request data.
+
 use bytes::Bytes;
 use http::Request;
 use http_body_util::BodyExt;
@@ -13,26 +18,194 @@ use crate::error::Error;
 use crate::response::{BoxBody, IntoResponse};
 use crate::state::AppState;
 
+/// Extracts and deserializes JSON request bodies.
+///
+/// Parses the request body as JSON into the specified type `T`.
+/// Returns 400 Bad Request if parsing fails.
+///
+/// # Examples
+///
+/// ```ignore
+/// use rapina::prelude::*;
+///
+/// #[derive(Deserialize)]
+/// struct CreateUser {
+///     name: String,
+///     email: String,
+/// }
+///
+/// #[post("/users")]
+/// async fn create_user(body: Json<CreateUser>) -> Json<User> {
+///     let data = body.into_inner();
+///     // Use data.name, data.email...
+/// }
+/// ```
 #[derive(Debug)]
 pub struct Json<T>(pub T);
+
+/// Extracts a single path parameter from the URL.
+///
+/// Parses a path segment into the specified type `T`.
+/// Returns 400 Bad Request if parsing fails.
+///
+/// # Examples
+///
+/// ```ignore
+/// use rapina::prelude::*;
+///
+/// #[get("/users/:id")]
+/// async fn get_user(id: Path<u64>) -> String {
+///     format!("User ID: {}", id.into_inner())
+/// }
+/// ```
 #[derive(Debug)]
 pub struct Path<T>(pub T);
+
+/// Extracts and deserializes query string parameters.
+///
+/// Parses the URL query string into a typed struct using `serde_urlencoded`.
+/// Returns 400 Bad Request if parsing fails.
+///
+/// # Examples
+///
+/// ```ignore
+/// use rapina::prelude::*;
+///
+/// #[derive(Deserialize)]
+/// struct Pagination {
+///     page: Option<u32>,
+///     limit: Option<u32>,
+/// }
+///
+/// #[get("/users")]
+/// async fn list_users(query: Query<Pagination>) -> String {
+///     let page = query.0.page.unwrap_or(1);
+///     format!("Page: {}", page)
+/// }
+/// ```
 #[derive(Debug)]
 pub struct Query<T>(pub T);
+
+/// Extracts and deserializes URL-encoded form data.
+///
+/// Parses `application/x-www-form-urlencoded` request bodies.
+/// Returns 400 Bad Request if content-type is wrong or parsing fails.
+///
+/// # Examples
+///
+/// ```ignore
+/// use rapina::prelude::*;
+///
+/// #[derive(Deserialize)]
+/// struct LoginForm {
+///     username: String,
+///     password: String,
+/// }
+///
+/// #[post("/login")]
+/// async fn login(form: Form<LoginForm>) -> String {
+///     format!("Welcome, {}", form.0.username)
+/// }
+/// ```
 #[derive(Debug)]
 pub struct Form<T>(pub T);
+
+/// Provides access to request headers.
+///
+/// Extracts all HTTP headers from the request.
+///
+/// # Examples
+///
+/// ```ignore
+/// use rapina::prelude::*;
+///
+/// #[get("/auth")]
+/// async fn check_auth(headers: Headers) -> Result<String> {
+///     let auth = headers.get("authorization")
+///         .ok_or_else(|| Error::unauthorized("missing auth header"))?;
+///     Ok("Authenticated".to_string())
+/// }
+/// ```
 #[derive(Debug)]
 pub struct Headers(pub http::HeaderMap);
+
+/// Extracts application state.
+///
+/// Provides access to shared application state that was registered
+/// with [`Rapina::state`](crate::app::Rapina::state).
+///
+/// # Examples
+///
+/// ```ignore
+/// use rapina::prelude::*;
+///
+/// #[derive(Clone)]
+/// struct AppConfig {
+///     db_url: String,
+/// }
+///
+/// #[get("/config")]
+/// async fn get_config(state: State<AppConfig>) -> String {
+///     state.into_inner().db_url
+/// }
+/// ```
 #[derive(Debug)]
 pub struct State<T>(pub T);
+
+/// Provides access to the request context.
+///
+/// Contains the `trace_id` and request start time for logging and tracing.
+///
+/// # Examples
+///
+/// ```ignore
+/// use rapina::prelude::*;
+///
+/// #[get("/trace")]
+/// async fn get_trace(ctx: Context) -> String {
+///     format!("Trace ID: {}", ctx.trace_id())
+/// }
+/// ```
 #[derive(Debug)]
 pub struct Context(pub RequestContext);
+
+/// Wraps an extractor and validates the extracted value.
+///
+/// Uses the `validator` crate to run validation rules on the inner value.
+/// Returns 422 Validation Error if validation fails.
+///
+/// # Examples
+///
+/// ```ignore
+/// use rapina::prelude::*;
+///
+/// #[derive(Deserialize, Validate)]
+/// struct CreateUser {
+///     #[validate(email)]
+///     email: String,
+///     #[validate(length(min = 8))]
+///     password: String,
+/// }
+///
+/// #[post("/users")]
+/// async fn create_user(body: Validated<Json<CreateUser>>) -> String {
+///     let data = body.into_inner().into_inner();
+///     // data is guaranteed to be valid
+///     format!("Created user: {}", data.email)
+/// }
+/// ```
 #[derive(Debug)]
 pub struct Validated<T>(pub T);
 
+/// Type alias for path parameters extracted from the URL.
 pub type PathParams = HashMap<String, String>;
 
+/// Trait for extractors that consume the request body.
+///
+/// Implement this trait for extractors that need access to the full request,
+/// including the body. Only one body-consuming extractor can be used per handler.
 pub trait FromRequest: Sized {
+    /// Extract the value from the request.
     fn from_request(
         req: Request<Incoming>,
         params: &PathParams,
@@ -40,7 +213,13 @@ pub trait FromRequest: Sized {
     ) -> impl std::future::Future<Output = Result<Self, Error>> + Send;
 }
 
+/// Trait for extractors that only need request metadata.
+///
+/// Implement this trait for extractors that don't need the request body,
+/// such as path parameters, query strings, or headers.
+/// Multiple parts-only extractors can be used in a single handler.
 pub trait FromRequestParts: Sized + Send {
+    /// Extract the value from request parts.
     fn from_request_parts(
         parts: &http::request::Parts,
         params: &PathParams,
@@ -49,60 +228,71 @@ pub trait FromRequestParts: Sized + Send {
 }
 
 impl<T> Json<T> {
+    /// Consumes the extractor and returns the inner value.
     pub fn into_inner(self) -> T {
         self.0
     }
 }
 
 impl<T> Path<T> {
+    /// Consumes the extractor and returns the inner value.
     pub fn into_inner(self) -> T {
         self.0
     }
 }
 
 impl<T> Query<T> {
+    /// Consumes the extractor and returns the inner value.
     pub fn into_inner(self) -> T {
         self.0
     }
 }
 
 impl<T> Form<T> {
+    /// Consumes the extractor and returns the inner value.
     pub fn into_inner(self) -> T {
         self.0
     }
 }
 
 impl Headers {
+    /// Gets a header value by name.
     pub fn get(&self, key: &str) -> Option<&http::HeaderValue> {
         self.0.get(key)
     }
 
+    /// Consumes the extractor and returns the inner HeaderMap.
     pub fn into_inner(self) -> http::HeaderMap {
         self.0
     }
 }
 
 impl<T> State<T> {
+    /// Consumes the extractor and returns the inner value.
     pub fn into_inner(self) -> T {
         self.0
     }
 }
 
 impl Context {
+    /// Consumes the extractor and returns the inner RequestContext.
     pub fn into_inner(self) -> RequestContext {
         self.0
     }
 
+    /// Returns the trace ID for this request.
     pub fn trace_id(&self) -> &str {
         &self.0.trace_id
     }
 
+    /// Returns the elapsed time since the request started.
     pub fn elapsed(&self) -> std::time::Duration {
         self.0.elapsed()
     }
 }
 
 impl<T> Validated<T> {
+    /// Consumes the extractor and returns the validated inner value.
     pub fn into_inner(self) -> T {
         self.0
     }
