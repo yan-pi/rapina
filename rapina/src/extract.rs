@@ -12,12 +12,19 @@ use crate::error::Error;
 use crate::response::{BoxBody, IntoResponse};
 use crate::state::AppState;
 
+#[derive(Debug)]
 pub struct Json<T>(pub T);
+#[derive(Debug)]
 pub struct Path<T>(pub T);
+#[derive(Debug)]
 pub struct Query<T>(pub T);
+#[derive(Debug)]
 pub struct Form<T>(pub T);
+#[derive(Debug)]
 pub struct Headers(pub http::HeaderMap);
+#[derive(Debug)]
 pub struct State<T>(pub T);
+#[derive(Debug)]
 pub struct Context(pub RequestContext);
 
 pub type PathParams = HashMap<String, String>;
@@ -260,4 +267,298 @@ pub fn extract_path_params(pattern: &str, path: &str) -> Option<PathParams> {
     }
 
     Some(params)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test::{TestRequest, empty_params, empty_state, params};
+
+    // Path params extraction tests
+    #[test]
+    fn test_extract_path_params_exact_match() {
+        let result = extract_path_params("/users", "/users");
+        assert!(result.is_some());
+        assert!(result.unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_extract_path_params_single_param() {
+        let result = extract_path_params("/users/:id", "/users/123");
+        assert!(result.is_some());
+        let params = result.unwrap();
+        assert_eq!(params.get("id"), Some(&"123".to_string()));
+    }
+
+    #[test]
+    fn test_extract_path_params_multiple_params() {
+        let result = extract_path_params("/users/:user_id/posts/:post_id", "/users/1/posts/42");
+        assert!(result.is_some());
+        let params = result.unwrap();
+        assert_eq!(params.get("user_id"), Some(&"1".to_string()));
+        assert_eq!(params.get("post_id"), Some(&"42".to_string()));
+    }
+
+    #[test]
+    fn test_extract_path_params_no_match_different_length() {
+        let result = extract_path_params("/users/:id", "/users/123/extra");
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_extract_path_params_no_match_different_static() {
+        let result = extract_path_params("/users/:id", "/posts/123");
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_extract_path_params_root() {
+        let result = extract_path_params("/", "/");
+        assert!(result.is_some());
+    }
+
+    // Query extractor tests
+    #[tokio::test]
+    async fn test_query_extractor_success() {
+        #[derive(serde::Deserialize, PartialEq, Debug)]
+        struct Params {
+            page: u32,
+            limit: u32,
+        }
+
+        let (parts, _) = TestRequest::get("/users?page=1&limit=10").into_parts();
+        let result =
+            Query::<Params>::from_request_parts(&parts, &empty_params(), &empty_state()).await;
+
+        assert!(result.is_ok());
+        let query = result.unwrap();
+        assert_eq!(query.0.page, 1);
+        assert_eq!(query.0.limit, 10);
+    }
+
+    #[tokio::test]
+    async fn test_query_extractor_optional_fields() {
+        #[derive(serde::Deserialize)]
+        struct Params {
+            page: Option<u32>,
+            search: Option<String>,
+        }
+
+        let (parts, _) = TestRequest::get("/users?page=5").into_parts();
+        let result =
+            Query::<Params>::from_request_parts(&parts, &empty_params(), &empty_state()).await;
+
+        assert!(result.is_ok());
+        let query = result.unwrap();
+        assert_eq!(query.0.page, Some(5));
+        assert!(query.0.search.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_query_extractor_empty_query() {
+        #[allow(dead_code)]
+        #[derive(serde::Deserialize, Default)]
+        struct Params {
+            #[serde(default)]
+            page: u32,
+        }
+
+        let (parts, _) = TestRequest::get("/users").into_parts();
+        let result =
+            Query::<Params>::from_request_parts(&parts, &empty_params(), &empty_state()).await;
+
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_query_extractor_invalid_type() {
+        #[allow(dead_code)]
+        #[derive(serde::Deserialize, Debug)]
+        struct Params {
+            page: u32,
+        }
+
+        let (parts, _) = TestRequest::get("/users?page=notanumber").into_parts();
+        let result =
+            Query::<Params>::from_request_parts(&parts, &empty_params(), &empty_state()).await;
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert_eq!(err.status, 400);
+    }
+
+    // Headers extractor tests
+    #[tokio::test]
+    async fn test_headers_extractor() {
+        let (parts, _) = TestRequest::get("/")
+            .header("x-custom", "value")
+            .header("authorization", "Bearer token")
+            .into_parts();
+
+        let result = Headers::from_request_parts(&parts, &empty_params(), &empty_state()).await;
+        assert!(result.is_ok());
+
+        let headers = result.unwrap();
+        assert_eq!(headers.get("x-custom").unwrap().to_str().unwrap(), "value");
+        assert_eq!(
+            headers.get("authorization").unwrap().to_str().unwrap(),
+            "Bearer token"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_headers_extractor_missing_header() {
+        let (parts, _) = TestRequest::get("/").into_parts();
+        let result = Headers::from_request_parts(&parts, &empty_params(), &empty_state()).await;
+
+        assert!(result.is_ok());
+        let headers = result.unwrap();
+        assert!(headers.get("x-nonexistent").is_none());
+    }
+
+    // Path extractor tests
+    #[tokio::test]
+    async fn test_path_extractor_u64() {
+        let (parts, _) = TestRequest::get("/users/123").into_parts();
+        let params = params(&[("id", "123")]);
+
+        let result = Path::<u64>::from_request_parts(&parts, &params, &empty_state()).await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().0, 123);
+    }
+
+    #[tokio::test]
+    async fn test_path_extractor_string() {
+        let (parts, _) = TestRequest::get("/users/john").into_parts();
+        let params = params(&[("name", "john")]);
+
+        let result = Path::<String>::from_request_parts(&parts, &params, &empty_state()).await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().0, "john");
+    }
+
+    #[tokio::test]
+    async fn test_path_extractor_invalid_type() {
+        let (parts, _) = TestRequest::get("/users/notanumber").into_parts();
+        let params = params(&[("id", "notanumber")]);
+
+        let result = Path::<u64>::from_request_parts(&parts, &params, &empty_state()).await;
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().status, 400);
+    }
+
+    #[tokio::test]
+    async fn test_path_extractor_missing_param() {
+        let (parts, _) = TestRequest::get("/users").into_parts();
+        let params = empty_params();
+
+        let result = Path::<u64>::from_request_parts(&parts, &params, &empty_state()).await;
+        assert!(result.is_err());
+    }
+
+    // Context extractor tests
+    #[tokio::test]
+    async fn test_context_extractor() {
+        let (parts, _) = TestRequest::get("/").into_parts();
+        let result = Context::from_request_parts(&parts, &empty_params(), &empty_state()).await;
+
+        assert!(result.is_ok());
+        let ctx = result.unwrap();
+        assert!(!ctx.trace_id().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_context_extractor_with_custom_trace_id() {
+        let custom_ctx = crate::context::RequestContext::with_trace_id("custom-123".to_string());
+        let (parts, _) = TestRequest::get("/").into_parts_with_context(custom_ctx);
+
+        let result = Context::from_request_parts(&parts, &empty_params(), &empty_state()).await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().trace_id(), "custom-123");
+    }
+
+    // State extractor tests
+    #[tokio::test]
+    async fn test_state_extractor_success() {
+        #[derive(Clone)]
+        struct AppConfig {
+            name: String,
+        }
+
+        let state = crate::test::state_with(AppConfig {
+            name: "test-app".to_string(),
+        });
+        let (parts, _) = TestRequest::get("/").into_parts();
+
+        let result = State::<AppConfig>::from_request_parts(&parts, &empty_params(), &state).await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().0.name, "test-app");
+    }
+
+    #[tokio::test]
+    async fn test_state_extractor_not_found() {
+        #[derive(Clone, Debug)]
+        struct MissingState;
+
+        let state = empty_state();
+        let (parts, _) = TestRequest::get("/").into_parts();
+
+        let result =
+            State::<MissingState>::from_request_parts(&parts, &empty_params(), &state).await;
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().status, 500);
+    }
+
+    // into_inner tests
+    #[test]
+    fn test_json_into_inner() {
+        let json = Json("value".to_string());
+        assert_eq!(json.into_inner(), "value");
+    }
+
+    #[test]
+    fn test_path_into_inner() {
+        let path = Path(42u64);
+        assert_eq!(path.into_inner(), 42);
+    }
+
+    #[test]
+    fn test_query_into_inner() {
+        let query = Query("test".to_string());
+        assert_eq!(query.into_inner(), "test");
+    }
+
+    #[test]
+    fn test_form_into_inner() {
+        let form = Form("data".to_string());
+        assert_eq!(form.into_inner(), "data");
+    }
+
+    #[test]
+    fn test_headers_into_inner() {
+        let headers = Headers(http::HeaderMap::new());
+        let inner = headers.into_inner();
+        assert!(inner.is_empty());
+    }
+
+    #[test]
+    fn test_state_into_inner() {
+        let state = State("value".to_string());
+        assert_eq!(state.into_inner(), "value");
+    }
+
+    #[test]
+    fn test_context_into_inner() {
+        let ctx = crate::context::RequestContext::with_trace_id("test".to_string());
+        let context = Context(ctx);
+        assert_eq!(context.into_inner().trace_id, "test");
+    }
+
+    #[test]
+    fn test_context_elapsed() {
+        let ctx = crate::context::RequestContext::new();
+        let context = Context(ctx);
+        // Verify elapsed() returns a Duration (compile-time check)
+        let _elapsed: std::time::Duration = context.elapsed();
+    }
 }

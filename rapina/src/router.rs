@@ -13,13 +13,13 @@ type BoxFuture = Pin<Box<dyn Future<Output = Response<BoxBody>> + Send>>;
 type HandlerFn =
     Box<dyn Fn(Request<Incoming>, PathParams, Arc<AppState>) -> BoxFuture + Send + Sync>;
 
-struct Route {
-    pattern: String,
+pub(crate) struct Route {
+    pub(crate) pattern: String,
     handler: HandlerFn,
 }
 
 pub struct Router {
-    routes: Vec<(Method, Route)>,
+    pub(crate) routes: Vec<(Method, Route)>,
 }
 
 impl Router {
@@ -91,5 +91,91 @@ impl Router {
 impl Default for Router {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_router_new() {
+        let router = Router::new();
+        assert!(router.routes.is_empty());
+    }
+
+    #[test]
+    fn test_router_default() {
+        let router = Router::default();
+        assert!(router.routes.is_empty());
+    }
+
+    #[test]
+    fn test_router_add_get_route() {
+        let router = Router::new().get("/users", |_req, _params, _state| async { StatusCode::OK });
+        assert_eq!(router.routes.len(), 1);
+        assert_eq!(router.routes[0].0, Method::GET);
+        assert_eq!(router.routes[0].1.pattern, "/users");
+    }
+
+    #[test]
+    fn test_router_add_post_route() {
+        let router = Router::new().post("/users", |_req, _params, _state| async {
+            StatusCode::CREATED
+        });
+        assert_eq!(router.routes.len(), 1);
+        assert_eq!(router.routes[0].0, Method::POST);
+        assert_eq!(router.routes[0].1.pattern, "/users");
+    }
+
+    #[test]
+    fn test_router_add_custom_method_route() {
+        let router =
+            Router::new().route(Method::PUT, "/users/:id", |_req, _params, _state| async {
+                StatusCode::OK
+            });
+        assert_eq!(router.routes.len(), 1);
+        assert_eq!(router.routes[0].0, Method::PUT);
+        assert_eq!(router.routes[0].1.pattern, "/users/:id");
+    }
+
+    #[test]
+    fn test_router_multiple_routes() {
+        let router = Router::new()
+            .get("/users", |_req, _params, _state| async { StatusCode::OK })
+            .post("/users", |_req, _params, _state| async {
+                StatusCode::CREATED
+            })
+            .route(
+                Method::DELETE,
+                "/users/:id",
+                |_req, _params, _state| async { StatusCode::NO_CONTENT },
+            );
+
+        assert_eq!(router.routes.len(), 3);
+        assert_eq!(router.routes[0].0, Method::GET);
+        assert_eq!(router.routes[1].0, Method::POST);
+        assert_eq!(router.routes[2].0, Method::DELETE);
+    }
+
+    #[test]
+    fn test_router_chaining() {
+        let router = Router::new()
+            .get("/", |_req, _params, _state| async { StatusCode::OK })
+            .get("/health", |_req, _params, _state| async { StatusCode::OK });
+
+        assert_eq!(router.routes.len(), 2);
+    }
+
+    #[test]
+    fn test_router_preserves_route_order() {
+        let router = Router::new()
+            .get("/first", |_req, _params, _state| async { StatusCode::OK })
+            .get("/second", |_req, _params, _state| async { StatusCode::OK })
+            .get("/third", |_req, _params, _state| async { StatusCode::OK });
+
+        assert_eq!(router.routes[0].1.pattern, "/first");
+        assert_eq!(router.routes[1].1.pattern, "/second");
+        assert_eq!(router.routes[2].1.pattern, "/third");
     }
 }

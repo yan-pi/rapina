@@ -106,3 +106,94 @@ impl Default for MiddlewareStack {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Duration;
+
+    // Test middleware for testing purposes
+    struct TestMiddleware;
+
+    impl Middleware for TestMiddleware {
+        fn handle<'a>(
+            &'a self,
+            req: Request<Incoming>,
+            _ctx: &'a RequestContext,
+            next: Next<'a>,
+        ) -> BoxFuture<'a, Response<BoxBody>> {
+            Box::pin(async move { next.run(req).await })
+        }
+    }
+
+    #[test]
+    fn test_middleware_stack_new() {
+        let stack = MiddlewareStack::new();
+        assert!(stack.is_empty());
+    }
+
+    #[test]
+    fn test_middleware_stack_default() {
+        let stack = MiddlewareStack::default();
+        assert!(stack.is_empty());
+    }
+
+    #[test]
+    fn test_middleware_stack_add() {
+        let mut stack = MiddlewareStack::new();
+        stack.add(TestMiddleware);
+        assert!(!stack.is_empty());
+        assert_eq!(stack.middlewares.len(), 1);
+    }
+
+    #[test]
+    fn test_middleware_stack_push() {
+        let mut stack = MiddlewareStack::new();
+        stack.push(Arc::new(TestMiddleware));
+        assert!(!stack.is_empty());
+        assert_eq!(stack.middlewares.len(), 1);
+    }
+
+    #[test]
+    fn test_middleware_stack_multiple() {
+        let mut stack = MiddlewareStack::new();
+        stack.add(TestMiddleware);
+        stack.add(TestMiddleware);
+        stack.push(Arc::new(TestMiddleware));
+        assert_eq!(stack.middlewares.len(), 3);
+    }
+
+    #[test]
+    fn test_timeout_middleware_new() {
+        let mw = TimeoutMiddleware::new(Duration::from_secs(60));
+        assert_eq!(mw.duration, Duration::from_secs(60));
+    }
+
+    #[test]
+    fn test_timeout_middleware_default() {
+        let mw = TimeoutMiddleware::default();
+        assert_eq!(mw.duration, Duration::from_secs(30));
+    }
+
+    #[test]
+    fn test_body_limit_middleware_new() {
+        let mw = BodyLimitMiddleware::new(2048);
+        assert_eq!(mw.max_size, 2048);
+    }
+
+    #[test]
+    fn test_body_limit_middleware_default() {
+        let mw = BodyLimitMiddleware::default();
+        assert_eq!(mw.max_size, 1024 * 1024); // 1MB default
+    }
+
+    #[test]
+    fn test_trace_id_middleware_new() {
+        let _mw = TraceIdMiddleware::new();
+    }
+
+    #[test]
+    fn test_trace_id_middleware_default() {
+        let _mw = TraceIdMiddleware::default();
+    }
+}

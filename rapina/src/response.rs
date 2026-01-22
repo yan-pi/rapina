@@ -61,3 +61,109 @@ impl<T: IntoResponse, E: IntoResponse> IntoResponse for std::result::Result<T, E
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use http_body_util::BodyExt;
+
+    #[tokio::test]
+    async fn test_str_into_response() {
+        let response = "hello".into_response();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response.headers().get("content-type").unwrap(),
+            "text/plain; charset=utf-8"
+        );
+
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        assert_eq!(&body[..], b"hello");
+    }
+
+    #[tokio::test]
+    async fn test_string_into_response() {
+        let response = "world".to_string().into_response();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response.headers().get("content-type").unwrap(),
+            "text/plain; charset=utf-8"
+        );
+
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        assert_eq!(&body[..], b"world");
+    }
+
+    #[tokio::test]
+    async fn test_status_code_into_response() {
+        let response = StatusCode::NOT_FOUND.into_response();
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        assert!(body.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_status_code_ok() {
+        let response = StatusCode::OK.into_response();
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_status_code_created() {
+        let response = StatusCode::CREATED.into_response();
+        assert_eq!(response.status(), StatusCode::CREATED);
+    }
+
+    #[tokio::test]
+    async fn test_status_code_no_content() {
+        let response = StatusCode::NO_CONTENT.into_response();
+        assert_eq!(response.status(), StatusCode::NO_CONTENT);
+    }
+
+    #[tokio::test]
+    async fn test_tuple_into_response() {
+        let response = (StatusCode::CREATED, "created".to_string()).into_response();
+        assert_eq!(response.status(), StatusCode::CREATED);
+        assert_eq!(
+            response.headers().get("content-type").unwrap(),
+            "text/plain; charset=utf-8"
+        );
+
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        assert_eq!(&body[..], b"created");
+    }
+
+    #[tokio::test]
+    async fn test_tuple_with_error_status() {
+        let response = (StatusCode::BAD_REQUEST, "bad request".to_string()).into_response();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[test]
+    fn test_response_into_response_identity() {
+        let original = Response::builder()
+            .status(StatusCode::ACCEPTED)
+            .body(Full::new(Bytes::from("test")))
+            .unwrap();
+
+        let response = original.into_response();
+        assert_eq!(response.status(), StatusCode::ACCEPTED);
+    }
+
+    #[tokio::test]
+    async fn test_result_ok_into_response() {
+        let result: std::result::Result<&str, StatusCode> = Ok("success");
+        let response = result.into_response();
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        assert_eq!(&body[..], b"success");
+    }
+
+    #[test]
+    fn test_result_err_into_response() {
+        let result: std::result::Result<&str, StatusCode> = Err(StatusCode::INTERNAL_SERVER_ERROR);
+        let response = result.into_response();
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    }
+}

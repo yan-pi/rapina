@@ -8,6 +8,7 @@ pub mod response;
 pub mod router;
 pub mod server;
 pub mod state;
+pub mod test;
 
 pub mod prelude {
     pub use crate::app::Rapina;
